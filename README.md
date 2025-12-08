@@ -2,20 +2,19 @@
 
 data/
 ├─ raw/
-│   ├─ train_images/         # 원본 이미지
-│   └─ train_annotations/    # 원본 JSON 어노테이션
+│ ├─ train_images/ # 원본 이미지
+│ └─ train_annotations/ # 원본 JSON 어노테이션
 │
 └─ processed/
-    ├─ matched_pairs.csv     # 이미지–JSON 1:1 매칭 결과
-    └─ train_labels.csv      # 학습용 라벨 데이터 (경로, bbox, 라벨명 등)
+├─ matched_pairs.csv # 이미지–JSON 1:1 매칭 결과
+└─ train_labels.csv # 학습용 라벨 데이터 (경로, bbox, 라벨명 등)
 
 src/
-├─ data_pipeline.py          # 데이터 매칭 & CSV 생성 파이프라인
-├─ pill_dataset.py           # 전처리 + 증강 Dataset 모듈
-└─ test_pipeline.py          # 전처리 결과 시각화 테스트
+├─ data_pipeline.py # 데이터 매칭 & CSV 생성 파이프라인
+├─ pill_dataset.py # 전처리 + 증강 Dataset 모듈
+└─ test_pipeline.py # 전처리 결과 시각화 테스트
 
-venv/                        # 가상환경
-
+venv/ # 가상환경
 ---
 
 # 1️⃣ data_pipeline.py
