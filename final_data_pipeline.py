@@ -1,7 +1,5 @@
 """
-===========================================================
 Unified Preprocessing Pipeline (팀 공용 전처리 파이프라인)
-===========================================================
 
 이 스크립트는 프로젝트 전체에서 사용하는 공용 전처리 시스템이다.
 
@@ -24,17 +22,87 @@ import argparse
 import pandas as pd
 from pathlib import Path
 
-# === 너의 기존 파이프라인 코드 가져오기 ===
 # 이미지-JSON 매칭 및 train_labels.csv 생성 기능
 from data_pipeline import create_matched_pairs, build_label_table, DataConfig  # :contentReference[oaicite:0]{index=0}
 
 # 공용 Transform (crop, padding, resize, augmentation)
 from pill_dataset import PillTransform, PillImageConfig  # :contentReference[oaicite:1]{index=1}
 
+import albumentations as A
 
-# ===========================================================
+
+def get_yolo_train_augment(img_size: int = 640):
+    """
+    YOLO용 기본 데이터 증강 파이프라인.
+    - 이미지 + bbox 를 함께 변형할 수 있도록 Albumentations 사용.
+    - YOLO 학습 스크립트에서 그대로 import 해서 쓰면 됨.
+
+    사용 예:
+        transform = get_yolo_train_augment(img_size=640)
+        augmented = transform(image=img, bboxes=bboxes, class_labels=labels)
+    """
+
+    # YOLO는 보통 (img_size x img_size)로 resize
+    # bbox 포맷은 "yolo" (cx, cy, w, h, 0~1 정규화) 라고 가정
+    transform = A.Compose(
+        [
+            # 크기 통일
+            A.LongestMaxSize(max_size=img_size, p=1.0),
+            A.PadIfNeeded(
+                min_height=img_size,
+                min_width=img_size,
+                border_mode=0,  # constant
+                value=0,
+                p=1.0,
+            ),
+
+            # 기본 기하학 변형
+            A.HorizontalFlip(p=0.5),          # 좌우 반전
+            A.ShiftScaleRotate(
+                shift_limit=0.02,
+                scale_limit=0.1,
+                rotate_limit=5,
+                border_mode=0,
+                value=0,
+                p=0.5,
+            ),
+
+            # 밝기/대비 등 색 변형
+            A.RandomBrightnessContrast(
+                brightness_limit=0.1,
+                contrast_limit=0.1,
+                p=0.7,
+            ),
+
+            # 블러/노이즈 (약하게)
+            A.OneOf(
+                [
+                    A.MotionBlur(blur_limit=3, p=0.3),
+                    A.GaussianBlur(blur_limit=3, p=0.3),
+                    A.GaussNoise(var_limit=(5.0, 20.0), p=0.3),
+                ],
+                p=0.4,
+            ),
+
+            # Cutout 같은 규제 기반 증강은 너무 세게 하지 않음
+            A.CoarseDropout(
+                max_holes=2,
+                max_height=int(img_size * 0.2),
+                max_width=int(img_size * 0.2),
+                fill_value=0,
+                p=0.2,
+            ),
+        ],
+        bbox_params=A.BboxParams(
+            format="yolo",            # (cx, cy, w, h), 0~1 정규화 가정
+            label_fields=["class_labels"],
+            min_visibility=0.3,       # 너무 작게 잘리는 bbox는 버림
+        ),
+    )
+
+    return transform
+
 # Stage 1 — 이미지 ↔ JSON 매칭 + train_labels.csv 생성
-# ===========================================================
 
 def stage1_build_base_labels():
     """
@@ -63,10 +131,7 @@ def stage1_build_base_labels():
     return df_labels
 
 
-
-# ===========================================================
 # Stage 2 — Transform 제공 (학습/추론 공용)
-# ===========================================================
 
 def get_transform(train=True):
     """
@@ -82,10 +147,7 @@ def get_transform(train=True):
     return transform
 
 
-
-# ===========================================================
 # Stage 3 — YOLO 오토라벨링 (bbox 자동 생성/보정)
-# ===========================================================
 
 def stage3_autolabel(yolo_label_dir: str):
     """
@@ -151,10 +213,7 @@ def stage3_autolabel(yolo_label_dir: str):
     return df_updated
 
 
-
-# ===========================================================
 # Stage 4 — train_labels.csv → YOLO txt 변환
-# ===========================================================
 
 def stage4_export_yolo_labels(csv_path: str):
     """
@@ -199,10 +258,7 @@ def stage4_export_yolo_labels(csv_path: str):
     print(f"[Stage 4 완료] YOLO txt 라벨 생성 → {out_dir}")
 
 
-
-# ===========================================================
 # 실행 엔트리 포인트
-# ===========================================================
 
 def main():
     parser = argparse.ArgumentParser()
